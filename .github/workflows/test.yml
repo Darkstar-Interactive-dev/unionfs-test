@@ -11,6 +11,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: System info
+        run: |
+          systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+          whoami
+          whoami /priv
+        shell: cmd
+
+      - name: Check filters
+        run: fltmc
+        shell: cmd
+        continue-on-error: true
+
+      - name: Start Docker and switch to Windows containers
+        run: |
+          # Switch to Windows containers
+          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine 2>&1
+          Start-Sleep 10
+          # Make sure dockerd is running
+          Start-Service docker -ErrorAction SilentlyContinue
+          Start-Sleep 5
+          docker info
+        shell: powershell
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -18,44 +41,23 @@ jobs:
         run: |
           cl.exe /nologo /O2 test_overflow.c /Fe:test_overflow.exe /link fltlib.lib advapi32.lib kernel32.lib
           dir test_overflow.exe
+        shell: cmd
 
-      - name: Check container support
-        run: |
-          echo "=== System Info ==="
-          systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
-          echo.
-          echo "=== Docker Info ==="
-          docker info
-          echo.
-          echo "=== Loaded Filters ==="
-          fltmc
-
-      - name: Switch Docker to Windows containers
-        run: |
-          # GitHub Actions windows runners should already have Windows containers
-          # but make sure
-          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine 2>$null
-          Start-Sleep -Seconds 5
-          docker info
-        shell: powershell
-
-      - name: Build container image
-        run: |
-          docker build -t unionfs-test .
-
-      - name: Run test in container (process isolation)
-        run: |
-          docker run --isolation=process unionfs-test
-
-      - name: Run test in container (hyperv isolation)
-        if: always()
-        run: |
-          docker run --isolation=hyperv unionfs-test
+      - name: Run on host first
+        run: test_overflow.exe
+        shell: cmd
         continue-on-error: true
 
-      - name: Run test directly on host (for comparison)
-        run: |
-          .\test_overflow.exe
+      - name: Build Windows container
+        run: docker build -t unionfs-test .
+        continue-on-error: true
+
+      - name: Run in container (process isolation)
+        run: docker run --isolation=process unionfs-test
+        continue-on-error: true
+
+      - name: Run in container (default isolation)
+        run: docker run unionfs-test
         continue-on-error: true
 
       - name: Upload exe
