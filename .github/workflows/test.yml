@@ -1,0 +1,65 @@
+name: UnionFS Overflow Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile test
+        run: |
+          cl.exe /nologo /O2 test_overflow.c /Fe:test_overflow.exe /link fltlib.lib advapi32.lib kernel32.lib
+          dir test_overflow.exe
+
+      - name: Check container support
+        run: |
+          echo "=== System Info ==="
+          systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+          echo.
+          echo "=== Docker Info ==="
+          docker info
+          echo.
+          echo "=== Loaded Filters ==="
+          fltmc
+
+      - name: Switch Docker to Windows containers
+        run: |
+          # GitHub Actions windows runners should already have Windows containers
+          # but make sure
+          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine 2>$null
+          Start-Sleep -Seconds 5
+          docker info
+        shell: powershell
+
+      - name: Build container image
+        run: |
+          docker build -t unionfs-test .
+
+      - name: Run test in container (process isolation)
+        run: |
+          docker run --isolation=process unionfs-test
+
+      - name: Run test in container (hyperv isolation)
+        if: always()
+        run: |
+          docker run --isolation=hyperv unionfs-test
+        continue-on-error: true
+
+      - name: Run test directly on host (for comparison)
+        run: |
+          .\test_overflow.exe
+        continue-on-error: true
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_overflow
+          path: test_overflow.exe
