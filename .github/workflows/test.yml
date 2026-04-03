@@ -15,7 +15,6 @@ jobs:
         run: |
           systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
           whoami
-          whoami /priv
         shell: cmd
 
       - name: Check filters
@@ -23,16 +22,17 @@ jobs:
         shell: cmd
         continue-on-error: true
 
-      - name: Start Docker and switch to Windows containers
+      - name: Start Docker (Windows containers)
         run: |
-          # Switch to Windows containers
-          & "C:\Program Files\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine 2>&1
-          Start-Sleep 10
-          # Make sure dockerd is running
+          # The runner has dockerd but not Docker Desktop
+          # Start the docker service directly
           Start-Service docker -ErrorAction SilentlyContinue
-          Start-Sleep 5
-          docker info
+          Start-Sleep 3
+          # Check if already running
+          docker info 2>&1
+          docker version 2>&1
         shell: powershell
+        continue-on-error: true
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -43,8 +43,10 @@ jobs:
           dir test_overflow.exe
         shell: cmd
 
-      - name: Run on host first
-        run: test_overflow.exe
+      - name: Run on host (as admin)
+        run: |
+          echo === Running directly on host ===
+          test_overflow.exe
         shell: cmd
         continue-on-error: true
 
@@ -56,7 +58,7 @@ jobs:
         run: docker run --isolation=process unionfs-test
         continue-on-error: true
 
-      - name: Run in container (default isolation)
+      - name: Run in container (default)
         run: docker run unionfs-test
         continue-on-error: true
 
